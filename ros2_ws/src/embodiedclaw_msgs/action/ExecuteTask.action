@@ -1,0 +1,13 @@
+string task_id
+string task_type
+string task_json
+---
+bool success
+string summary
+string[] artifact_uris
+string error_code
+---
+string stage
+float32 progress
+string message
+string image_uri
