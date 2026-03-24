@@ -9,6 +9,27 @@ from rclpy.node import Node
 from embodiedclaw_msgs.action import ExecuteTask
 from embodiedclaw_msgs.msg import TaskEvent
 
+TASK_PLANS: Dict[str, List[Tuple[str, str]]] = {
+    'tidy_desk': [
+        ('RECEIVED', 'Task accepted by orchestrator'),
+        ('PLANNING', 'Building tidy desk execution plan'),
+        ('NAVIGATING', 'Navigating to target area'),
+        ('PERCEIVING', 'Scanning desk for objects'),
+        ('MANIPULATING', 'Performing tidy operation'),
+        ('VERIFYING', 'Verifying desk condition'),
+        ('REPORTING', 'Preparing task summary'),
+        ('COMPLETED', 'Task completed successfully'),
+    ],
+    'inspect_windows': [
+        ('RECEIVED', 'Task accepted by orchestrator'),
+        ('PLANNING', 'Building window inspection plan'),
+        ('NAVIGATING', 'Navigating inspection points'),
+        ('INSPECTING', 'Inspecting windows and recording status'),
+        ('REPORTING', 'Preparing inspection report'),
+        ('COMPLETED', 'Task completed successfully'),
+    ],
+}
+
 
 class OrchestratorNode(Node):
     def __init__(self) -> None:
@@ -22,34 +43,6 @@ class OrchestratorNode(Node):
         )
         self.get_logger().info('EmbodiedClaw orchestrator started.')
 
-    def _plan_for_task(self, task_type: str) -> List[Tuple[str, str]]:
-        plans: Dict[str, List[Tuple[str, str]]] = {
-            'tidy_desk': [
-                ('RECEIVED', 'Task accepted by orchestrator'),
-                ('PLANNING', 'Building tidy desk execution plan'),
-                ('NAVIGATING', 'Navigating to target area'),
-                ('PERCEIVING', 'Scanning desk for objects'),
-                ('MANIPULATING', 'Performing tidy operation'),
-                ('VERIFYING', 'Verifying desk condition'),
-                ('REPORTING', 'Preparing task summary'),
-                ('COMPLETED', 'Task completed successfully'),
-            ],
-            'inspect_windows': [
-                ('RECEIVED', 'Task accepted by orchestrator'),
-                ('PLANNING', 'Building window inspection plan'),
-                ('NAVIGATING', 'Navigating inspection points'),
-                ('INSPECTING', 'Inspecting windows and recording status'),
-                ('REPORTING', 'Preparing inspection report'),
-                ('COMPLETED', 'Task completed successfully'),
-            ],
-        }
-        return plans.get(task_type, [
-            ('RECEIVED', 'Task accepted by orchestrator'),
-            ('PLANNING', 'Building generic execution plan'),
-            ('REPORTING', 'Preparing fallback summary'),
-            ('COMPLETED', 'Task completed successfully'),
-        ])
-
     def _publish_event(self, task_id: str, stage: str, status: str, message: str, image_uri: str = '') -> None:
         event = TaskEvent()
         event.task_id = task_id
@@ -59,6 +52,14 @@ class OrchestratorNode(Node):
         event.image_uri = image_uri
         event.stamp = self.get_clock().now().to_msg()
         self.event_publisher.publish(event)
+
+    def _publish_feedback(self, goal_handle, stage: str, progress: float, message: str) -> None:
+        feedback = ExecuteTask.Feedback()
+        feedback.stage = stage
+        feedback.progress = progress
+        feedback.message = message
+        feedback.image_uri = ''
+        goal_handle.publish_feedback(feedback)
 
     def execute_callback(self, goal_handle):
         goal = goal_handle.request
@@ -72,7 +73,19 @@ class OrchestratorNode(Node):
 
         self.get_logger().info(f'Received task_id={task_id} task_type={task_type} payload={task_payload}')
 
-        steps = self._plan_for_task(task_type)
+        steps = TASK_PLANS.get(task_type)
+        if not steps:
+            self._publish_event(task_id, 'REJECTED', 'FAILED', f'Unsupported task type: {task_type}')
+            self._publish_feedback(goal_handle, 'REJECTED', 0.0, f'Unsupported task type: {task_type}')
+            goal_handle.abort()
+
+            result = ExecuteTask.Result()
+            result.success = False
+            result.summary = f'Unsupported task type: {task_type}'
+            result.artifact_uris = []
+            result.error_code = 'UNSUPPORTED_TASK_TYPE'
+            return result
+
         total = len(steps)
 
         for index, (stage, message) in enumerate(steps, start=1):
@@ -80,14 +93,7 @@ class OrchestratorNode(Node):
             status = 'DONE' if stage == 'COMPLETED' else 'RUNNING'
 
             self._publish_event(task_id, stage, status, message)
-
-            feedback = ExecuteTask.Feedback()
-            feedback.stage = stage
-            feedback.progress = progress
-            feedback.message = message
-            feedback.image_uri = ''
-            goal_handle.publish_feedback(feedback)
-
+            self._publish_feedback(goal_handle, stage, progress, message)
             time.sleep(0.4)
 
         goal_handle.succeed()
