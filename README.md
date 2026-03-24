@@ -171,6 +171,44 @@ This milestone does not yet connect real VLN, VLA, or robot hardware.
    ros2 topic echo /assistant/task_events
    ```
 
+## M1.5 OpenClaw Integration
+
+M1.5 adds a minimal Python client layer (`apps/openclaw_tools/embodiedclaw_client.py`) that OpenClaw can call directly.
+
+This client layer isolates OpenClaw from ROS 2 details and provides a stable HTTP-facing interface for future tool wrapping. OpenClaw can interact with EmbodiedClaw through HTTP endpoints exposed by the bridge API, without handling ROS 2 action/topic wiring directly.
+
+### Local integration test example
+
+```python
+from apps.openclaw_tools.embodiedclaw_client import EmbodiedClawClient
+
+client = EmbodiedClawClient("http://127.0.0.1:8000")
+
+print(client.health())
+
+task = client.submit_robot_task(
+    "tidy_desk",
+    {"area": "desk_01"}
+)
+print(task)
+
+status = client.get_robot_task_status(task["task_id"])
+print(status)
+```
+
+You can also run the tiny helper example:
+
+```bash
+python -m apps.openclaw_tools.example_usage
+```
+
+In the next stage, OpenClaw tools can wrap:
+
+- `submit_robot_task`
+- `get_robot_task_status`
+
+for Feishu-triggered task execution and progress polling.
+
 ## Roadmap
 
 ### M0
