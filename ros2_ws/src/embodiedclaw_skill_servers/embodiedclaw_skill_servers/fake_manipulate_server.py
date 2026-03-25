@@ -1,3 +1,4 @@
+import json
 import time
 
 import rclpy
@@ -5,6 +6,8 @@ from rclpy.action import ActionServer
 from rclpy.node import Node
 
 from embodiedclaw_msgs.action import ManipulateSkill
+
+SUPPORTED_MANIP_SKILLS = {'pick', 'place_into', 'open', 'close', 'toggle', 'tidy_surface'}
 
 
 class FakeManipulateSkillServer(Node):
@@ -25,30 +28,43 @@ class FakeManipulateSkillServer(Node):
             f'target_object={goal.target_object} target_place={goal.target_place}'
         )
 
-        stages = [
-            ('STARTED', 0.15, 'Manipulation request accepted', ''),
-            ('LOCATING_OBJECTS', 0.4, 'Locating clutter on surface', ''),
-            ('REARRANGING', 0.75, 'Tidying and grouping items', 'mock://images/tidy_step_1.jpg'),
-            ('FINALIZING', 0.95, 'Final touches on target area', 'mock://images/tidy_step_2.jpg'),
-        ]
+        skill_name = goal.skill_name or 'unknown'
+        if skill_name not in SUPPORTED_MANIP_SKILLS:
+            goal_handle.abort()
+            result = ManipulateSkill.Result()
+            result.success = False
+            result.detail = f'Unsupported manipulate skill_name={skill_name}'
+            result.artifact_uris = []
+            return result
 
-        for phase, progress, message, image_uri in stages:
+        for phase, progress, message, image_uri in [
+            ('STARTED', 0.2, f'{skill_name} request accepted', ''),
+            ('EXECUTING', 0.65, f'Executing {skill_name}', f'mock://images/{skill_name}_step.jpg'),
+            ('FINALIZING', 0.95, f'Finalizing {skill_name}', f'mock://images/{skill_name}_done.jpg'),
+        ]:
             feedback = ManipulateSkill.Feedback()
             feedback.phase = phase
             feedback.progress = progress
             feedback.message = message
             feedback.image_uri = image_uri
             goal_handle.publish_feedback(feedback)
-            time.sleep(0.3)
+            time.sleep(0.2)
+
+        try:
+            params = json.loads(goal.params_json) if goal.params_json else {}
+        except json.JSONDecodeError:
+            params = {}
 
         goal_handle.succeed()
         result = ManipulateSkill.Result()
         result.success = True
-        result.detail = f'Tidy simulation complete using skill {goal.skill_name or "unknown"}'
+        result.detail = f'{skill_name} completed for {goal.target_object or goal.target_place or "target"}'
         result.artifact_uris = [
-            'mock://artifacts/tidy_before.jpg',
-            'mock://artifacts/tidy_after.jpg',
+            f'mock://artifacts/{skill_name}_before.jpg',
+            f'mock://artifacts/{skill_name}_after.jpg',
         ]
+        if params.get('target'):
+            result.artifact_uris.append(f"mock://artifacts/{skill_name}_{params['target']}.json")
         return result
 
 

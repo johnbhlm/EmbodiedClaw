@@ -13,11 +13,22 @@ from rclpy.node import Node
 from embodiedclaw_msgs.action import ExecuteTask
 from embodiedclaw_msgs.msg import TaskEvent
 
-SUPPORTED_TASK_TYPES = {'tidy_desk', 'inspect_windows'}
+SUPPORTED_TASK_TYPES = {
+    'move_forward',
+    'rotate_relative',
+    'navigate_to',
+    'observe_scene',
+    'list_objects_on_surface',
+    'bring_object',
+    'tidy_desk',
+    'inspect_windows_and_lights',
+    'inspect_windows',
+    'stop_task',
+}
 
 
 class TaskCreateRequest(BaseModel):
-    task_type: str = Field(..., description='Task type such as tidy_desk or inspect_windows')
+    task_type: str = Field(..., description='Task type such as tidy_desk, bring_object, or inspect_windows_and_lights')
     task_payload: Dict[str, Any] = Field(default_factory=dict)
 
 

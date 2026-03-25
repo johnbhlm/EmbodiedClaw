@@ -1,3 +1,4 @@
+import json
 import time
 
 import rclpy
@@ -36,15 +37,41 @@ class FakeInspectSkillServer(Node):
             feedback.message = message
             feedback.image_uri = image_uri
             goal_handle.publish_feedback(feedback)
-            time.sleep(0.25)
+            time.sleep(0.2)
+
+        params = {}
+        if goal.params_json:
+            try:
+                params = json.loads(goal.params_json)
+            except json.JSONDecodeError:
+                params = {}
+
+        inspect_type = goal.inspect_type or 'scene_summary'
+        target_id = goal.target_id or params.get('target', 'target')
+
+        if inspect_type == 'scene_summary':
+            finding = {'summary': 'table and chair visible'}
+        elif inspect_type == 'object_list':
+            finding = {'objects': ['apple', 'cup', 'book']}
+        elif inspect_type == 'object_existence':
+            object_name = str(params.get('object_name', 'apple'))
+            finding = {'object_name': object_name, 'exists': object_name.lower() != 'missing_object'}
+        elif inspect_type == 'verify_surface':
+            finding = {'tidy': True}
+        elif inspect_type == 'window_state':
+            finding = {'target_id': target_id, 'closed': True}
+        elif inspect_type == 'light_state':
+            finding = {'target_id': target_id, 'off': True}
+        else:
+            finding = {'summary': f'unsupported inspect_type={inspect_type}, fallback success'}
 
         goal_handle.succeed()
         result = InspectSkill.Result()
         result.success = True
-        result.finding = f'Inspection OK for {goal.target_id or "target"}'
+        result.finding = json.dumps(finding)
         result.image_uris = [
-            'mock://images/inspect_1.jpg',
-            'mock://images/inspect_2.jpg',
+            f'mock://images/{inspect_type}_{target_id}_1.jpg',
+            f'mock://images/{inspect_type}_{target_id}_2.jpg',
         ]
         return result
 
