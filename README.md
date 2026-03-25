@@ -2,323 +2,197 @@
 
 EmbodiedClaw is an OpenClaw-powered assistant robot framework built on ROS 2.
 
-It is designed for assistant robot demos that support:
-- Feishu text/voice task interaction
-- task orchestration with OpenClaw
-- ROS 2 as the unified communication bus
-- skill-based execution
-- VLN as navigation skill provider
-- VLA as manipulation skill provider
-- robot-agnostic capability abstraction
-- progressive iteration from wheel-based humanoid robots to humanoid platforms such as G1
+It keeps high-level task understanding in OpenClaw, keeps execution on ROS 2, and keeps robot-specific logic inside robot adapters.
 
 ## Design Principles
 
 - Capability abstraction must not bind to a specific robot.
-- VLN and VLA are treated as skill providers.
-- OpenClaw handles task understanding, clarification, orchestration, and reporting.
+- OpenClaw handles high-level understanding, clarification, orchestration, and reporting.
 - ROS 2 is the unified bus.
-- Robot-specific logic must stay inside Robot Adapter.
-- Execution must be observable, interruptible, recoverable, and replayable.
+- VLN and VLA are skill providers, not the planner.
+- Robot-specific logic stays inside Robot Adapter.
 
-## Target Demo Scenarios
+## Canonical High-Level Skills
 
-### 1. Tidy desk
-A user sends a Feishu message such as:
+M2-beta freezes the agent-facing canonical v1 skill vocabulary:
 
-> 收拾一下桌子
+- `observe`: scene/objects/state inspection.
+- `move_forward`: short forward motion primitive.
+- `navigate_to`: absolute or relative navigation target.
+- `place_into`: put an item into target place/container/handover point.
+- `pick`: pick an item.
+- `toggle`: toggle a binary actuator/device state.
+- `close`: close an object/device.
+- `open`: open an object/device.
+- `stop`: safe stop/cancel semantic.
 
-Expected system behavior:
-- OpenClaw understands and structures the task
-- Mission Orchestrator builds a task graph
-- robot navigates to target desk
-- perception scans desk
-- VLA skill performs pick/place or tidy operations
-- verification checks results
-- progress and results are sent back to Feishu
+> Left/right turn commands are represented as structured relative navigation tasks (`rotate_relative` -> `navigate_to(relative_pose=...)`), **not** as a separate canonical skill.
 
-### 2. Scheduled window inspection
-A scheduled task runs every night at 21:00:
+## OpenClaw Task Protocol
 
-- navigate through predefined inspection points
-- capture each window image
-- check whether each window is closed
-- send images and inspection summary back to Feishu
+OpenClaw should emit structured tasks rather than low-level motion command strings.
 
-## Architecture
+### Example: `move_forward`
 
-```text
-Feishu text/voice
-    ↓
-Feishu Gateway
-    ↓
-OpenClaw Agent Layer
-    ├─ intent understanding
-    ├─ clarification
-    ├─ task structuring
-    └─ result summarization
-    ↓
-Mission Orchestrator
-    ├─ task graph / state machine
-    ├─ skill router
-    ├─ recovery manager
-    ├─ scheduler
-    ├─ event bus
-    └─ progress reporter
-    ↓
-ROS 2
-    ├─ Navigation Skill Adapter -> VLN
-    ├─ Manipulation Skill Adapter -> VLA
-    ├─ Perception / Verification
-    ├─ Robot Adapter
-    ├─ Safety Supervisor
-    └─ Data Logger
-    ↓
-Robot Runtime
-    ├─ wheel-based humanoid platform
-    └─ humanoid platform (e.g. G1)
+```json
+{
+  "task_id": "t1",
+  "task_type": "move_forward",
+  "task_payload": {"distance_m": 1.0}
+}
 ```
+
+### Example: `rotate_relative`
+
+```json
+{
+  "task_id": "t2",
+  "task_type": "rotate_relative",
+  "task_payload": {"yaw_deg": 45}
+}
+```
+
+### Example: `observe_scene`
+
+```json
+{
+  "task_id": "t3",
+  "task_type": "observe_scene",
+  "task_payload": {"area": "desk_01"}
+}
+```
+
+### Example: `bring_object`
+
+```json
+{
+  "task_id": "t4",
+  "task_type": "bring_object",
+  "task_payload": {
+    "object_name": "apple",
+    "source_location": "dining_table",
+    "recipient_location": "user_location"
+  }
+}
+```
+
+### Example: `tidy_desk`
+
+```json
+{
+  "task_id": "t5",
+  "task_type": "tidy_desk",
+  "task_payload": {"area": "desk_01"}
+}
+```
+
+### Example: `inspect_windows_and_lights`
+
+```json
+{
+  "task_id": "t6",
+  "task_type": "inspect_windows_and_lights",
+  "task_payload": {
+    "window_targets": ["window_01", "window_02"],
+    "light_targets": ["light_01", "light_02"]
+  }
+}
+```
+
+## M2-beta Reasoning and Skill Routing
+
+M2-beta introduces a lightweight structured tasking layer under `apps/tasking/`:
+
+- `task_protocol.py` defines dataclass task/step schemas.
+- `skill_vocab.py` freezes canonical skills and supported task types.
+- `plan_builder.py` centralizes rule-based task decomposition.
+
+The orchestrator is now **plan-driven**:
+
+1. Parse incoming task goal into `TaskSpec`.
+2. Build canonical skill plan through `PlanBuilder`.
+3. Execute each `SkillStep` through a canonical skill router.
+
+Skill routing:
+
+- `observe` -> `/assistant/inspect_skill`
+- `move_forward`, `navigate_to` -> `/assistant/navigate_skill`
+- `pick`, `place_into`, `open`, `close`, `toggle` -> `/assistant/manipulate_skill`
+- `stop` -> internal safe cancellation handling
+
+Fake skill servers remain temporary providers for local testing.
+Real VLN/VLA/SDK-backed adapters can later replace these servers without changing upper task interfaces (`POST /tasks`, `ExecuteTask`, canonical plans).
 
 ## Repository Layout
 
 ```text
 EmbodiedClaw/
-├── AGENTS.md
-├── README.md
 ├── apps/
-│   └── bridge_api/
-│       └── server.py
-├── requirements-dev.txt
-└── ros2_ws/
-    └── src/
-        ├── embodiedclaw_msgs/
-        ├── embodiedclaw_orchestrator/
-        └── embodiedclaw_skill_servers/
+│   ├── bridge_api/
+│   ├── openclaw_tools/
+│   └── tasking/
+├── ros2_ws/
+│   └── src/
+│       ├── embodiedclaw_msgs/
+│       ├── embodiedclaw_orchestrator/
+│       └── embodiedclaw_skill_servers/
+├── tests/
+└── README.md
 ```
 
-## Current Milestone: M1
-
-M1 focuses on a minimal verifiable end-to-end pipeline:
-
-OpenClaw / Feishu  
-→ HTTP Bridge  
-→ ROS 2 Orchestrator  
-→ fake task flow  
-→ task event feedback
-
-This milestone does not yet connect real VLN, VLA, or robot hardware.
-
-### Included in M1
-
-- ROS 2 interface package: `embodiedclaw_msgs`
-- ROS 2 orchestrator package: `embodiedclaw_orchestrator`
-- HTTP bridge API with FastAPI
-- fake task execution flow for:
-  - `tidy_desk`
-  - `inspect_windows`
-- local end-to-end validation
-
-## M1 Local Test
+## M2-beta Local Test
 
 1. Install Python dependencies
    ```bash
    pip install -r requirements-dev.txt
    ```
-2. Build ROS 2 workspace
+2. Build workspace
    ```bash
    cd ros2_ws
    source /opt/ros/humble/setup.bash
    colcon build --symlink-install
    source install/setup.bash
    ```
-3. Run orchestrator
+3. Run fake skill servers
    ```bash
-   cd ros2_ws
-   source /opt/ros/humble/setup.bash
-   source install/setup.bash
-   ros2 run embodiedclaw_orchestrator orchestrator_node
-   ```
-4. Run FastAPI bridge
-   ```bash
-   cd ..
-   source /opt/ros/humble/setup.bash
-   source ros2_ws/install/setup.bash
-   uvicorn apps.bridge_api.server:app --host 0.0.0.0 --port 8000
-   ```
-5. Health check
-   ```bash
-   curl http://127.0.0.1:8000/health
-   ```
-6. Submit a tidy desk task
-   ```bash
-   curl -X POST http://127.0.0.1:8000/tasks \
-     -H "Content-Type: application/json" \
-     -d '{
-       "task_type": "tidy_desk",
-       "task_payload": {
-         "area": "desk_01"
-       }
-     }'
-   ```
-7. Poll task status
-   ```bash
-   curl http://127.0.0.1:8000/tasks/<task_id>
-   ```
-8. Watch ROS 2 task events
-   ```bash
-   cd ros2_ws
-   source /opt/ros/humble/setup.bash
-   source install/setup.bash
-   ros2 topic echo /assistant/task_events
-   ```
-
-## M1.5 OpenClaw Integration
-
-M1.5 adds a minimal Python client layer (`apps/openclaw_tools/embodiedclaw_client.py`) that OpenClaw can call directly.
-
-This client layer isolates OpenClaw from ROS 2 details and provides a stable HTTP-facing interface for future tool wrapping. OpenClaw can interact with EmbodiedClaw through HTTP endpoints exposed by the bridge API, without handling ROS 2 action/topic wiring directly.
-
-### Local integration test example
-
-```python
-from apps.openclaw_tools.embodiedclaw_client import EmbodiedClawClient
-
-client = EmbodiedClawClient("http://127.0.0.1:8000")
-
-print(client.health())
-
-task = client.submit_robot_task(
-    "tidy_desk",
-    {"area": "desk_01"}
-)
-print(task)
-
-status = client.get_robot_task_status(task["task_id"])
-print(status)
-```
-
-You can also run the tiny helper example:
-
-```bash
-python -m apps.openclaw_tools.example_usage
-```
-
-In the next stage, OpenClaw tools can wrap:
-
-- `submit_robot_task`
-- `get_robot_task_status`
-
-for Feishu-triggered task execution and progress polling.
-
-## M2-alpha Skill-Oriented Execution
-
-M2-alpha externalizes fake execution into independent ROS 2 skill action servers:
-
-- `embodiedclaw_skill_servers` provides:
-  - `/assistant/navigate_skill`
-  - `/assistant/manipulate_skill`
-  - `/assistant/inspect_skill`
-- `embodiedclaw_orchestrator` keeps `/assistant/execute_task` and `/assistant/task_events`, but now calls skill actions rather than simulating full tasks internally.
-- The HTTP bridge API remains unchanged and compatible with M1/M1.5 clients.
-
-This keeps the upper task interface stable while making execution skill-oriented and robot-agnostic. Later, real VLN/VLA-backed servers can replace fake skill servers without changing bridge or orchestrator task APIs.
-
-### M2-alpha Local Test
-
-1. Install Python dependencies
-   ```bash
-   pip install -r requirements-dev.txt
-   ```
-2. Build ROS 2 workspace
-   ```bash
-   cd ros2_ws
-   source /opt/ros/humble/setup.bash
-   colcon build --symlink-install
-   source install/setup.bash
-   ```
-3. Run skill servers (single process)
-   ```bash
-   cd ros2_ws
-   source /opt/ros/humble/setup.bash
-   source install/setup.bash
    ros2 run embodiedclaw_skill_servers skill_launcher
    ```
 4. Run orchestrator
    ```bash
-   cd ros2_ws
-   source /opt/ros/humble/setup.bash
-   source install/setup.bash
    ros2 run embodiedclaw_orchestrator orchestrator_node
    ```
-5. Run FastAPI bridge
+5. Run bridge API (new terminal)
    ```bash
    cd ..
    source /opt/ros/humble/setup.bash
    source ros2_ws/install/setup.bash
    uvicorn apps.bridge_api.server:app --host 0.0.0.0 --port 8000
    ```
-6. Submit a tidy desk task
+6. Submit tasks
    ```bash
-   curl -X POST http://127.0.0.1:8000/tasks \
-     -H "Content-Type: application/json" \
-     -d '{
-       "task_type": "tidy_desk",
-       "task_payload": {
-         "area": "desk_01"
-       }
-     }'
+   # move_forward
+   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"move_forward","task_payload":{"distance_m":1.0}}'
+
+   # observe_scene
+   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"observe_scene","task_payload":{"area":"desk_01"}}'
+
+   # bring_object
+   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"bring_object","task_payload":{"object_name":"apple","source_location":"dining_table","recipient_location":"user_location"}}'
+
+   # tidy_desk
+   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"tidy_desk","task_payload":{"area":"desk_01"}}'
+
+   # inspect_windows_and_lights
+   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"inspect_windows_and_lights","task_payload":{"window_targets":["window_01"],"light_targets":["light_01"]}}'
    ```
 7. Poll task status
    ```bash
    curl http://127.0.0.1:8000/tasks/<task_id>
    ```
-8. Check available actions
+8. Inspect ROS 2 actions
    ```bash
    cd ros2_ws
    source /opt/ros/humble/setup.bash
    source install/setup.bash
    ros2 action list
    ```
-
-## Roadmap
-
-### M0
-- architecture freeze
-- interface freeze
-- task protocol freeze
-
-### M1
-- fake end-to-end pipeline
-- ROS 2 task action server
-- progress event publishing
-- HTTP bridge
-
-### M2
-- navigation skill integration
-- fixed-point inspection demo
-
-### M3
-- manipulation skill integration
-- tidy desk demo
-
-### M4
-- scheduled tasks
-- recovery and escalation
-
-### M5
-- data loop
-- replay and evaluation
-- iterative optimization
-
-## Long-Term Goal
-
-Build a reusable assistant robot framework where:
-
-- the upper layer is task- and skill-oriented
-- skill interfaces remain stable
-- the robot embodiment can be replaced
-- execution data can be used for continuous improvement
-
-## License
-
-TBD
