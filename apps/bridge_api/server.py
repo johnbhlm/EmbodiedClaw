@@ -10,6 +10,8 @@ from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
+from apps.reasoning import CommandInterpreter
+from apps.reasoning.dispatch_contract import build_dispatch_response
 from embodiedclaw_msgs.action import ExecuteTask
 from embodiedclaw_msgs.msg import TaskEvent
 
@@ -30,6 +32,11 @@ SUPPORTED_TASK_TYPES = {
 class TaskCreateRequest(BaseModel):
     task_type: str = Field(..., description='Task type such as tidy_desk, bring_object, or inspect_windows_and_lights')
     task_payload: Dict[str, Any] = Field(default_factory=dict)
+
+
+class InterpretRequest(BaseModel):
+    command: str
+    context: Dict[str, Any] = Field(default_factory=dict)
 
 
 class BridgeNode(Node):
@@ -158,6 +165,7 @@ _task_state_lock = threading.Lock()
 _bridge_node: BridgeNode | None = None
 _executor: MultiThreadedExecutor | None = None
 _spin_thread: threading.Thread | None = None
+_interpreter = CommandInterpreter()
 
 
 @app.on_event('startup')
@@ -200,18 +208,22 @@ def health() -> Dict[str, str]:
 
 @app.post('/tasks')
 def create_task(request: TaskCreateRequest) -> Dict[str, Any]:
+    return _create_task_internal(request.task_type, request.task_payload)
+
+
+def _create_task_internal(task_type: str, task_payload: Dict[str, Any]) -> Dict[str, Any]:
     if _bridge_node is None:
         raise HTTPException(status_code=500, detail='Bridge node is not initialized')
 
-    if request.task_type not in SUPPORTED_TASK_TYPES:
-        raise HTTPException(status_code=400, detail=f'Unsupported task_type: {request.task_type}')
+    if task_type not in SUPPORTED_TASK_TYPES:
+        raise HTTPException(status_code=400, detail=f'Unsupported task_type: {task_type}')
 
     task_id = str(uuid.uuid4())
     with _task_state_lock:
-        _task_state[task_id] = _default_task_state(task_id, request.task_type, request.task_payload)
+        _task_state[task_id] = _default_task_state(task_id, task_type, task_payload)
 
     try:
-        _bridge_node.submit_task(task_id, request.task_type, request.task_payload)
+        _bridge_node.submit_task(task_id, task_type, task_payload)
     except RuntimeError as exc:
         with _task_state_lock:
             _task_state[task_id]['latest_status'] = 'FAILED_TO_SUBMIT'
@@ -232,3 +244,18 @@ def get_task(task_id: str) -> Dict[str, Any]:
         if task is None:
             raise HTTPException(status_code=404, detail='Task not found')
         return task
+
+
+@app.post('/interpret')
+def interpret_command(request: InterpretRequest) -> Dict[str, Any]:
+    result = _interpreter.interpret(request.command, request.context)
+    return result.to_dict()
+
+
+@app.post('/dispatch_command')
+def dispatch_command(request: InterpretRequest) -> Dict[str, Any]:
+    result = _interpreter.interpret(request.command, request.context)
+    try:
+        return build_dispatch_response(result, _create_task_internal)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
