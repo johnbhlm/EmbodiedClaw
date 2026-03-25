@@ -1,0 +1,17 @@
+# Goal
+string request_id
+string skill_name
+string target_object
+string target_place
+string params_json
+---
+# Result
+bool success
+string detail
+string[] artifact_uris
+---
+# Feedback
+string phase
+float32 progress
+string message
+string image_uri

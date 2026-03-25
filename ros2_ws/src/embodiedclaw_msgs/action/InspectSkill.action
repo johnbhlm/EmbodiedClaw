@@ -1,0 +1,16 @@
+# Goal
+string request_id
+string inspect_type
+string target_id
+string params_json
+---
+# Result
+bool success
+string finding
+string[] image_uris
+---
+# Feedback
+string phase
+float32 progress
+string message
+string image_uri
