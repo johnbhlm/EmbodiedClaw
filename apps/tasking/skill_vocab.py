@@ -1,7 +1,7 @@
-from enum import StrEnum
+from enum import Enum
 
 
-class CanonicalSkill(StrEnum):
+class CanonicalSkill(str, Enum):
     OBSERVE = 'observe'
     MOVE_FORWARD = 'move_forward'
     NAVIGATE_TO = 'navigate_to'
@@ -13,7 +13,7 @@ class CanonicalSkill(StrEnum):
     STOP = 'stop'
 
 
-class TaskType(StrEnum):
+class TaskType(str, Enum):
     MOVE_FORWARD = 'move_forward'
     ROTATE_RELATIVE = 'rotate_relative'
     NAVIGATE_TO = 'navigate_to'
