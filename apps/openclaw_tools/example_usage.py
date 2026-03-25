@@ -13,14 +13,14 @@ if __name__ == "__main__":
     health_result = client.health()
     print("health:", health_result)
 
-    chat_result = client.chat_command("往前走一米")
-    print("chat_command:", chat_result)
+    handle_result = client.openclaw_handle_message("往前走一米")
+    print("assistant:", handle_result.get("reply_text", ""))
 
-    task_id = chat_result.get("task_id")
-    if task_id:
-        for _ in range(3):
-            summary = client.get_task_summary(task_id)
-            print("task_summary:", summary)
-            if summary.get("final_status") in {"SUCCEEDED", "FAILED", "FAILED_TO_SUBMIT", "REJECTED"}:
+    task_id = handle_result.get("task_id")
+    if handle_result.get("needs_polling") and task_id:
+        for _ in range(5):
+            summary = client.openclaw_poll_task(task_id)
+            print("assistant:", summary.get("reply_text", ""))
+            if summary.get("terminal"):
                 break
             time.sleep(1.0)

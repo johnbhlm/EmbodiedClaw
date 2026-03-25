@@ -271,7 +271,7 @@ Compact polling payload for assistant loops:
    ```
 7. Run local OpenClaw-style CLI loop
    ```bash
-   python -m apps.openclaw_bridge.demo_chat_loop
+   python -m apps.openclaw_bridge.demo_openclaw_loop
    ```
 
 ### Curl examples
@@ -290,3 +290,46 @@ curl http://127.0.0.1:8000/task_summary/<task_id>
 
 - **M3-alpha**: provider abstraction and provider-backed adapter execution for observe/navigate.
 - **Next milestone**: replace fake providers with real camera/VLN/SDK-backed providers while preserving canonical skill + task interfaces.
+
+## OpenClaw / Feishu Direct Integration
+
+This milestone introduces a **minimal two-tool contract** for OpenClaw integration testing first:
+
+- `POST /openclaw/handle_message`
+- `GET /openclaw/poll_task/{task_id}`
+
+> Scope note: this milestone is for Feishu/OpenClaw integration testing first. Real providers (real observe / VLN / VLA / SDK-backed adapters) come later.
+
+### Intended flow
+
+1. Feishu sends user message to OpenClaw.
+2. OpenClaw calls `POST /openclaw/handle_message`.
+3. If response includes `needs_polling=true` and a `task_id`, OpenClaw polls `GET /openclaw/poll_task/{task_id}`.
+4. OpenClaw sends returned `reply_text` back to Feishu.
+5. Continue polling until `terminal=true`.
+
+### OpenClaw contract curl examples
+
+```bash
+# handle one incoming chat message
+curl -X POST http://127.0.0.1:8000/openclaw/handle_message \
+  -H "Content-Type: application/json" \
+  -d '{"command":"往前走一米","context":{}}'
+
+# poll progress/result with task_id from handle_message
+curl http://127.0.0.1:8000/openclaw/poll_task/<task_id>
+```
+
+### Local OpenClaw/Feishu simulation loop
+
+```bash
+python -m apps.openclaw_bridge.demo_openclaw_loop
+```
+
+This loop simulates the two-tool interaction style:
+
+- read one user command
+- call `handle_message`
+- print Chinese assistant-facing `reply_text`
+- if polling is required, continue polling until terminal result
+- supports `quit` / `exit`
