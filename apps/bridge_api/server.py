@@ -252,10 +252,60 @@ def interpret_command(request: InterpretRequest) -> Dict[str, Any]:
     return result.to_dict()
 
 
+def _build_dispatch_for_command(command: str, context: Dict[str, Any]) -> Dict[str, Any]:
+    interpretation = _interpreter.interpret(command, context)
+    return build_dispatch_response(interpretation, _create_task_internal)
+
+
 @app.post('/dispatch_command')
 def dispatch_command(request: InterpretRequest) -> Dict[str, Any]:
-    result = _interpreter.interpret(request.command, request.context)
     try:
-        return build_dispatch_response(result, _create_task_internal)
+        return _build_dispatch_for_command(request.command, request.context)
     except ValueError as exc:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post('/chat_command')
+def chat_command(request: InterpretRequest) -> Dict[str, Any]:
+    try:
+        dispatch_result = _build_dispatch_for_command(request.command, request.context)
+    except ValueError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+    interpretation = dispatch_result.get('interpretation', {})
+    status = interpretation.get('status')
+    if status in {'clarification_needed', 'scheduled_task', 'unsupported'}:
+        return {'interpretation': interpretation, 'dispatch': None, 'task_id': None}
+
+    task_submission = dispatch_result.get('task_submission') or {}
+    return {
+        'interpretation': interpretation,
+        'dispatch': task_submission,
+        'task_id': task_submission.get('task_id'),
+    }
+
+
+@app.get('/task_summary/{task_id}')
+def get_task_summary(task_id: str) -> Dict[str, Any]:
+    with _task_state_lock:
+        task = _task_state.get(task_id)
+        if task is None:
+            raise HTTPException(status_code=404, detail='Task not found')
+
+        events = task.get('events', [])
+        feedback = task.get('feedback', [])
+        latest_event = events[-1] if events else {}
+        latest_feedback = feedback[-1] if feedback else {}
+
+        result = task.get('final_result')
+        final_status = task.get('latest_status')
+        return {
+            'task_id': task_id,
+            'final_status': final_status,
+            'progress': task.get('progress', 0.0),
+            'latest_stage': task.get('latest_stage'),
+            'latest_status': task.get('latest_status'),
+            'latest_message': latest_feedback.get('message') or latest_event.get('message') or '',
+            'latest_image_uri': latest_feedback.get('image_uri') or latest_event.get('image_uri') or '',
+            'result': result,
+        }

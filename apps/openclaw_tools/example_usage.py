@@ -1,5 +1,9 @@
 """Tiny local usage example for the EmbodiedClaw HTTP client."""
 
+from __future__ import annotations
+
+import time
+
 from apps.openclaw_tools.embodiedclaw_client import EmbodiedClawClient
 
 
@@ -9,8 +13,14 @@ if __name__ == "__main__":
     health_result = client.health()
     print("health:", health_result)
 
-    interpret_result = client.interpret_command("往前走一米")
-    print("interpret_command:", interpret_result)
+    chat_result = client.chat_command("往前走一米")
+    print("chat_command:", chat_result)
 
-    dispatch_result = client.dispatch_command("你看到了什么")
-    print("dispatch_command:", dispatch_result)
+    task_id = chat_result.get("task_id")
+    if task_id:
+        for _ in range(3):
+            summary = client.get_task_summary(task_id)
+            print("task_summary:", summary)
+            if summary.get("final_status") in {"SUCCEEDED", "FAILED", "FAILED_TO_SUBMIT", "REJECTED"}:
+                break
+            time.sleep(1.0)
