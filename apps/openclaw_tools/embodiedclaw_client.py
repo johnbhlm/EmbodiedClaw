@@ -35,3 +35,17 @@ class EmbodiedClawClient:
         response = requests.get(f"{self.base_url}/tasks/{task_id}", timeout=self.timeout)
         response.raise_for_status()
         return response.json()
+
+    def interpret_command(self, command: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """POST /interpret for deterministic command-to-task interpretation."""
+        payload = {'command': command, 'context': context or {}}
+        response = requests.post(f"{self.base_url}/interpret", json=payload, timeout=self.timeout)
+        response.raise_for_status()
+        return response.json()
+
+    def dispatch_command(self, command: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """POST /dispatch_command to interpret command then submit executable task."""
+        payload = {'command': command, 'context': context or {}}
+        response = requests.post(f"{self.base_url}/dispatch_command", json=payload, timeout=10.0)
+        response.raise_for_status()
+        return response.json()

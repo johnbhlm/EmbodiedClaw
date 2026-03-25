@@ -56,7 +56,44 @@ Current routing:
 
 Both variables default to `fake`.
 
-M3-alpha also includes explicit placeholder skeletons for upcoming providers:
+## OpenClaw Command Contract
+
+M3-beta adds a deterministic command interpretation contract for demo natural-language commands:
+
+- OpenClaw should still emit structured tasks whenever possible.
+- EmbodiedClaw now provides an explicit command interpretation + clarification layer for integration stability.
+- This layer is intentionally minimal and rule-based for demos/testing; it is **not** a replacement for full OpenClaw reasoning/planning.
+
+The interpretation layer returns `InterpretationResult` with statuses:
+
+- `executable`
+- `clarification_needed`
+- `unsupported`
+- `scheduled_task`
+
+## Supported Demo Commands
+
+- `往前走一米` -> `move_forward`
+- `左转45度` / `右转45度` -> `rotate_relative`
+- `你看到了什么` -> `observe_scene`
+- `桌子上都有什么` -> `list_objects_on_surface` (needs `surface_id` context)
+- `收拾一下桌子` -> `tidy_desk` (needs `area`/`surface_id` context)
+- `将餐桌上苹果给我` -> `bring_object` (needs `recipient_location` context)
+- `每天晚上九点巡检窗户和灯是否关闭` -> `inspect_windows_and_lights` with daily `21:00` schedule metadata
+- `停止` -> `stop_task`
+
+## M3-beta Interpretation and Dispatch
+
+Bridge API now includes:
+
+- `POST /interpret`: converts `command` + optional `context` to `InterpretationResult`.
+- `POST /dispatch_command`: interprets first, then:
+  - auto-submits only when status is `executable`;
+  - returns interpretation only for `clarification_needed`, `scheduled_task`, `unsupported`.
+
+`/tasks` and `/tasks/{task_id}` behavior is unchanged.
+
+## M2-beta Reasoning and Skill Routing
 
 - `CameraObserveProvider` (future real camera/VLA integration)
 - `UnitreeSDKNavigateProvider` (future VLN/SDK adapter-backed motion)
@@ -68,7 +105,7 @@ EmbodiedClaw/
 ├── apps/
 │   ├── bridge_api/
 │   ├── openclaw_tools/
-│   ├── providers/
+│   ├── reasoning/
 │   └── tasking/
 ├── ros2_ws/
 │   └── src/
@@ -80,7 +117,7 @@ EmbodiedClaw/
 └── README.md
 ```
 
-## M3-alpha Local Test
+## M3-beta Local Test
 
 1. Install Python dependencies
    ```bash
@@ -93,11 +130,15 @@ EmbodiedClaw/
    colcon build --symlink-install
    source install/setup.bash
    ```
-3. Run provider adapter launcher (observe + navigate)
+3. Run provider adapter launcher (skill servers for M3-alpha/M3-beta local fake providers)
    ```bash
    ros2 run embodiedclaw_provider_adapters adapter_launcher
    ```
-4. Run fake manipulate server (new terminal)
+4. (Optional if separate in your setup) run fake manipulate server
+   ```bash
+   ros2 run embodiedclaw_skill_servers fake_manipulate_server
+   ```
+5. Run orchestrator
    ```bash
    source /opt/ros/humble/setup.bash
    source ros2_ws/install/setup.bash
@@ -115,31 +156,28 @@ EmbodiedClaw/
    source ros2_ws/install/setup.bash
    uvicorn apps.bridge_api.server:app --host 0.0.0.0 --port 8000
    ```
-7. Submit tasks
+7. Test command interpretation endpoints
    ```bash
-   # observe_scene
-   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"observe_scene","task_payload":{"area":"desk_01"}}'
+   # interpret move_forward
+   curl -X POST http://127.0.0.1:8000/interpret -H "Content-Type: application/json" -d '{"command":"往前走一米","context":{}}'
 
-   # list_objects_on_surface
-   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"list_objects_on_surface","task_payload":{"surface":"desk_01"}}'
+   # interpret bring_object (clarification expected if recipient_location missing)
+   curl -X POST http://127.0.0.1:8000/interpret -H "Content-Type: application/json" -d '{"command":"将餐桌上苹果给我","context":{}}'
 
-   # move_forward
-   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"move_forward","task_payload":{"distance_m":1.0}}'
+   # dispatch observe_scene
+   curl -X POST http://127.0.0.1:8000/dispatch_command -H "Content-Type: application/json" -d '{"command":"你看到了什么","context":{}}'
 
-   # rotate_relative
-   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"rotate_relative","task_payload":{"yaw_deg":45}}'
+   # dispatch move_forward
+   curl -X POST http://127.0.0.1:8000/dispatch_command -H "Content-Type: application/json" -d '{"command":"往前走一米","context":{}}'
 
-   # bring_object
-   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"bring_object","task_payload":{"object_name":"apple","source_location":"dining_table","recipient_location":"user_location"}}'
-
-   # inspect_windows_and_lights
-   curl -X POST http://127.0.0.1:8000/tasks -H "Content-Type: application/json" -d '{"task_type":"inspect_windows_and_lights","task_payload":{"window_targets":["window_01"],"light_targets":["light_01"]}}'
+   # interpret scheduled inspection
+   curl -X POST http://127.0.0.1:8000/interpret -H "Content-Type: application/json" -d '{"command":"每天晚上九点巡检窗户和灯是否关闭","context":{}}'
    ```
 8. Poll task status
    ```bash
    curl http://127.0.0.1:8000/tasks/<task_id>
    ```
-9. Inspect ROS2 action list
+9. Inspect ROS 2 actions
    ```bash
    source /opt/ros/humble/setup.bash
    source ros2_ws/install/setup.bash
