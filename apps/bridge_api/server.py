@@ -1,6 +1,7 @@
 import json
 import threading
 import uuid
+from dataclasses import asdict
 from typing import Any, Dict
 
 import rclpy
@@ -10,6 +11,7 @@ from rclpy.action import ActionClient
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.node import Node
 
+from apps.openclaw_bridge.openclaw_formatter import build_message_response, build_poll_response
 from apps.reasoning import CommandInterpreter
 from apps.reasoning.dispatch_contract import build_dispatch_response
 from embodiedclaw_msgs.action import ExecuteTask
@@ -35,6 +37,11 @@ class TaskCreateRequest(BaseModel):
 
 
 class InterpretRequest(BaseModel):
+    command: str
+    context: Dict[str, Any] = Field(default_factory=dict)
+
+
+class OpenClawHandleMessageRequest(BaseModel):
     command: str
     context: Dict[str, Any] = Field(default_factory=dict)
 
@@ -309,3 +316,15 @@ def get_task_summary(task_id: str) -> Dict[str, Any]:
             'latest_image_uri': latest_feedback.get('image_uri') or latest_event.get('image_uri') or '',
             'result': result,
         }
+
+
+@app.post('/openclaw/handle_message')
+def openclaw_handle_message(request: OpenClawHandleMessageRequest) -> Dict[str, Any]:
+    chat_result = chat_command(InterpretRequest(command=request.command, context=request.context))
+    return asdict(build_message_response(chat_result))
+
+
+@app.get('/openclaw/poll_task/{task_id}')
+def openclaw_poll_task(task_id: str) -> Dict[str, Any]:
+    summary = get_task_summary(task_id)
+    return asdict(build_poll_response(summary))

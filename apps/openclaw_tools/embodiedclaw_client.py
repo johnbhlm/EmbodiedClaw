@@ -62,3 +62,16 @@ class EmbodiedClawClient:
         response = requests.get(f"{self.base_url}/task_summary/{task_id}", timeout=self.timeout)
         response.raise_for_status()
         return response.json()
+
+    def openclaw_handle_message(self, command: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """POST /openclaw/handle_message for Feishu/OpenClaw two-tool entry."""
+        payload = {'command': command, 'context': context or {}}
+        response = requests.post(f"{self.base_url}/openclaw/handle_message", json=payload, timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+
+    def openclaw_poll_task(self, task_id: str) -> dict[str, Any]:
+        """GET /openclaw/poll_task/{task_id} for stable assistant-facing polling."""
+        response = requests.get(f"{self.base_url}/openclaw/poll_task/{task_id}", timeout=self.timeout)
+        response.raise_for_status()
+        return response.json()
