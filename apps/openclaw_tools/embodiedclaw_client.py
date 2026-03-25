@@ -49,3 +49,16 @@ class EmbodiedClawClient:
         response = requests.post(f"{self.base_url}/dispatch_command", json=payload, timeout=10.0)
         response.raise_for_status()
         return response.json()
+
+    def chat_command(self, command: str, context: dict[str, Any] | None = None) -> dict[str, Any]:
+        """POST /chat_command for one-shot OpenClaw-style command submission."""
+        payload = {'command': command, 'context': context or {}}
+        response = requests.post(f"{self.base_url}/chat_command", json=payload, timeout=10.0)
+        response.raise_for_status()
+        return response.json()
+
+    def get_task_summary(self, task_id: str) -> dict[str, Any]:
+        """GET /task_summary/{task_id} for compact chat polling."""
+        response = requests.get(f"{self.base_url}/task_summary/{task_id}", timeout=self.timeout)
+        response.raise_for_status()
+        return response.json()

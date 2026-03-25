@@ -104,6 +104,7 @@ Bridge API now includes:
 EmbodiedClaw/
 ├── apps/
 │   ├── bridge_api/
+│   ├── openclaw_bridge/
 │   ├── openclaw_tools/
 │   ├── reasoning/
 │   └── tasking/
@@ -183,6 +184,107 @@ EmbodiedClaw/
    source ros2_ws/install/setup.bash
    ros2 action list
    ```
+
+
+## OpenClaw / Feishu Integration Flow
+
+M3-gamma adds a minimal OpenClaw-facing wrapper contract for chat-style integration:
+
+1. User sends a message in Feishu (or another chat channel).
+2. OpenClaw invokes EmbodiedClaw `POST /chat_command`.
+3. EmbodiedClaw returns either:
+   - clarification requirement;
+   - scheduled-task interpretation result;
+   - unsupported result;
+   - or executable command submission with `task_id`.
+4. OpenClaw polls `GET /task_summary/{task_id}` for compact progress updates.
+5. OpenClaw formats chat-facing progress and final result text back to the user.
+
+This keeps OpenClaw as the high-level orchestrator while EmbodiedClaw remains an execution bridge.
+
+## M3-gamma Chat Contract
+
+### `POST /chat_command`
+
+Single-command entry for OpenClaw/Feishu wrappers.
+
+Request body:
+
+```json
+{
+  "command": "往前走一米",
+  "context": {}
+}
+```
+
+Response behavior:
+
+- clarification/scheduled/unsupported: returns interpretation-only payload.
+- executable: returns interpretation + dispatch submission + `task_id`.
+- no long polling is performed in this endpoint.
+
+### `GET /task_summary/{task_id}`
+
+Compact polling payload for assistant loops:
+
+- `task_id`
+- `final_status`
+- `progress`
+- `latest_stage`
+- `latest_status`
+- `latest_message`
+- `latest_image_uri`
+- `result`
+
+## Local OpenClaw-style Demo
+
+1. Install Python dependencies
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+2. Build ROS2 workspace
+   ```bash
+   cd ros2_ws
+   source /opt/ros/humble/setup.bash
+   colcon build --symlink-install
+   source install/setup.bash
+   ```
+3. Run provider adapters
+   ```bash
+   ros2 run embodiedclaw_provider_adapters adapter_launcher
+   ```
+4. Run fake manipulate server
+   ```bash
+   ros2 run embodiedclaw_skill_servers fake_manipulate_server
+   ```
+5. Run orchestrator
+   ```bash
+   source /opt/ros/humble/setup.bash
+   source ros2_ws/install/setup.bash
+   ros2 run embodiedclaw_orchestrator orchestrator_node
+   ```
+6. Run bridge API
+   ```bash
+   source /opt/ros/humble/setup.bash
+   source ros2_ws/install/setup.bash
+   uvicorn apps.bridge_api.server:app --host 0.0.0.0 --port 8000
+   ```
+7. Run local OpenClaw-style CLI loop
+   ```bash
+   python -m apps.openclaw_bridge.demo_chat_loop
+   ```
+
+### Curl examples
+
+```bash
+# one-shot chat command
+curl -X POST http://127.0.0.1:8000/chat_command \
+  -H "Content-Type: application/json" \
+  -d '{"command":"往前走一米","context":{}}'
+
+# compact polling summary
+curl http://127.0.0.1:8000/task_summary/<task_id>
+```
 
 ## Roadmap
 
