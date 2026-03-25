@@ -1,3 +1,4 @@
+"""Deprecated in M3-alpha: use embodiedclaw_provider_adapters.observe_adapter_server instead."""
 import json
 import time
 
