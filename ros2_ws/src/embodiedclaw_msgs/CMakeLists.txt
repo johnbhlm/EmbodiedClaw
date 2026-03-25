@@ -12,6 +12,9 @@ find_package(builtin_interfaces REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/TaskEvent.msg"
   "action/ExecuteTask.action"
+  "action/NavigateSkill.action"
+  "action/ManipulateSkill.action"
+  "action/InspectSkill.action"
   DEPENDENCIES builtin_interfaces
 )
 

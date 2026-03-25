@@ -92,7 +92,8 @@ EmbodiedClaw/
 └── ros2_ws/
     └── src/
         ├── embodiedclaw_msgs/
-        └── embodiedclaw_orchestrator/
+        ├── embodiedclaw_orchestrator/
+        └── embodiedclaw_skill_servers/
 ```
 
 ## Current Milestone: M1
@@ -208,6 +209,76 @@ In the next stage, OpenClaw tools can wrap:
 - `get_robot_task_status`
 
 for Feishu-triggered task execution and progress polling.
+
+## M2-alpha Skill-Oriented Execution
+
+M2-alpha externalizes fake execution into independent ROS 2 skill action servers:
+
+- `embodiedclaw_skill_servers` provides:
+  - `/assistant/navigate_skill`
+  - `/assistant/manipulate_skill`
+  - `/assistant/inspect_skill`
+- `embodiedclaw_orchestrator` keeps `/assistant/execute_task` and `/assistant/task_events`, but now calls skill actions rather than simulating full tasks internally.
+- The HTTP bridge API remains unchanged and compatible with M1/M1.5 clients.
+
+This keeps the upper task interface stable while making execution skill-oriented and robot-agnostic. Later, real VLN/VLA-backed servers can replace fake skill servers without changing bridge or orchestrator task APIs.
+
+### M2-alpha Local Test
+
+1. Install Python dependencies
+   ```bash
+   pip install -r requirements-dev.txt
+   ```
+2. Build ROS 2 workspace
+   ```bash
+   cd ros2_ws
+   source /opt/ros/humble/setup.bash
+   colcon build --symlink-install
+   source install/setup.bash
+   ```
+3. Run skill servers (single process)
+   ```bash
+   cd ros2_ws
+   source /opt/ros/humble/setup.bash
+   source install/setup.bash
+   ros2 run embodiedclaw_skill_servers skill_launcher
+   ```
+4. Run orchestrator
+   ```bash
+   cd ros2_ws
+   source /opt/ros/humble/setup.bash
+   source install/setup.bash
+   ros2 run embodiedclaw_orchestrator orchestrator_node
+   ```
+5. Run FastAPI bridge
+   ```bash
+   cd ..
+   source /opt/ros/humble/setup.bash
+   source ros2_ws/install/setup.bash
+   uvicorn apps.bridge_api.server:app --host 0.0.0.0 --port 8000
+   ```
+6. Submit a tidy desk task
+   ```bash
+   curl -X POST http://127.0.0.1:8000/tasks \
+     -H "Content-Type: application/json" \
+     -d '{
+       "task_type": "tidy_desk",
+       "task_payload": {
+         "area": "desk_01"
+       }
+     }'
+   ```
+7. Poll task status
+   ```bash
+   curl http://127.0.0.1:8000/tasks/<task_id>
+   ```
+8. Check available actions
+   ```bash
+   cd ros2_ws
+   source /opt/ros/humble/setup.bash
+   source install/setup.bash
+   ros2 action list
+   ```
 
 ## Roadmap
 

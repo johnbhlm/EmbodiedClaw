@@ -1,0 +1,14 @@
+# Goal
+string request_id
+string target_type
+string location_id
+string pose_json
+---
+# Result
+bool success
+string detail
+---
+# Feedback
+string phase
+float32 progress
+string message
