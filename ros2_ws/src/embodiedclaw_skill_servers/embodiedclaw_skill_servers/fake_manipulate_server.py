@@ -1,3 +1,4 @@
+"""M3-alpha manipulation placeholder server (fake implementation; canonical manipulate skills only)."""
 import json
 import time
 

@@ -187,6 +187,8 @@ class OrchestratorNode(Node):
         stage = self._stage_for_step(step)
 
         if skill_name == CanonicalSkill.OBSERVE:
+            endpoint = '/assistant/inspect_skill'
+            self.get_logger().info(f'Canonical skill={skill_name} routed to {endpoint} (provider adapter).')
             goal_msg = InspectSkill.Goal()
             goal_msg.request_id = f'{task_id}-observe'
             goal_msg.inspect_type = str(params.get('mode', 'scene_summary'))
@@ -195,6 +197,8 @@ class OrchestratorNode(Node):
             return self._call_skill(self._inspect_client, goal_msg, goal_handle, stage, progress_base, progress_span)
 
         if skill_name in {CanonicalSkill.MOVE_FORWARD, CanonicalSkill.NAVIGATE_TO}:
+            endpoint = '/assistant/navigate_skill'
+            self.get_logger().info(f'Canonical skill={skill_name} routed to {endpoint} (provider adapter).')
             goal_msg = NavigateSkill.Goal()
             goal_msg.request_id = f'{task_id}-{skill_name}'
             goal_msg.target_type = 'relative' if 'relative_pose' in params else 'location'
@@ -212,6 +216,8 @@ class OrchestratorNode(Node):
             CanonicalSkill.CLOSE,
             CanonicalSkill.TOGGLE,
         }:
+            endpoint = '/assistant/manipulate_skill'
+            self.get_logger().info(f'Canonical skill={skill_name} routed to {endpoint} (fake manipulate server).')
             goal_msg = ManipulateSkill.Goal()
             goal_msg.request_id = f'{task_id}-{skill_name}'
             goal_msg.skill_name = skill_name
@@ -221,6 +227,7 @@ class OrchestratorNode(Node):
             return self._call_skill(self._manipulate_client, goal_msg, goal_handle, stage, progress_base, progress_span)
 
         if skill_name == CanonicalSkill.STOP:
+            self.get_logger().info('Canonical skill=stop handled internally by orchestrator.')
             return SkillCallResult(True, 'stop_requested', [], [])
 
         return SkillCallResult(False, f'Unsupported canonical skill: {skill_name}', [], [])
