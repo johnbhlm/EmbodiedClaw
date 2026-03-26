@@ -333,3 +333,59 @@ This loop simulates the two-tool interaction style:
 - print Chinese assistant-facing `reply_text`
 - if polling is required, continue polling until terminal result
 - supports `quit` / `exit`
+
+## Real Observe Provider (D455 / ROS2)
+
+Observe can now run with a real ROS2 camera topic source (for Intel RealSense D455) while preserving the same OpenClaw/Feishu-facing contracts and canonical `observe` skill routing.
+
+- `fake` observe remains the default fallback.
+- `ros_camera` observe uses ROS2 image subscription and returns structured outputs from a real frame.
+- This milestone validates **real image acquisition + structured response** only.
+- Real detector/VLM perception intelligence is intentionally deferred to later milestones.
+
+### Observe Provider Environment Variables
+
+- `EMBODIEDCLAW_OBSERVE_PROVIDER` (`fake` | `ros_camera`, default: `fake`)
+- `EMBODIEDCLAW_CAMERA_TOPIC` (default: `/camera/camera/color/image_raw`)
+- `EMBODIEDCLAW_OBSERVE_BACKEND` (default: `basic`)
+- `EMBODIEDCLAW_OBSERVE_REQUIRE_FRESH_FRAME_SEC` (default: `2.0`)
+- `EMBODIEDCLAW_SAVE_OBSERVE_IMAGES` (`1`/`0`, default: `1`)
+
+### Local Validation Steps (D455)
+
+1. Build workspace:
+   ```bash
+   cd ros2_ws
+   source /opt/ros/humble/setup.bash
+   colcon build --symlink-install
+   source install/setup.bash
+   ```
+2. Export observe provider env:
+   ```bash
+   export EMBODIEDCLAW_OBSERVE_PROVIDER=ros_camera
+   export EMBODIEDCLAW_CAMERA_TOPIC=/camera/camera/color/image_raw
+   export EMBODIEDCLAW_OBSERVE_BACKEND=basic
+   ```
+3. Start D455 ROS2 node (example RealSense launch in your local setup).
+4. Start provider adapters:
+   ```bash
+   ros2 run embodiedclaw_provider_adapters adapter_launcher
+   ```
+5. Start bridge API and query camera status:
+   ```bash
+   uvicorn apps.bridge_api.server:app --host 0.0.0.0 --port 8000
+   curl http://127.0.0.1:8000/camera_status
+   ```
+6. Test commands through existing flow:
+   - `你看到了什么`
+   - `桌子上都有什么`
+7. Verify returned `file://` image artifact URIs under:
+   - `~/code/EmbodiedClaw/runtime_artifacts/observations/`
+
+### Updated Repository Layout (Observe Provider)
+
+- `apps/providers/ros_camera_observe_provider.py`
+- `apps/providers/observe_backend.py`
+- `apps/providers/basic_observe_backend.py`
+- `ros2_ws/src/embodiedclaw_provider_adapters/embodiedclaw_provider_adapters/frame_buffer.py`
+- `ros2_ws/src/embodiedclaw_provider_adapters/embodiedclaw_provider_adapters/image_artifacts.py`

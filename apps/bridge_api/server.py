@@ -1,6 +1,7 @@
 import json
 import threading
 import uuid
+from pathlib import Path
 from dataclasses import asdict
 from typing import Any, Dict
 
@@ -14,8 +15,12 @@ from rclpy.node import Node
 from apps.openclaw_bridge.openclaw_formatter import build_message_response, build_poll_response
 from apps.reasoning import CommandInterpreter
 from apps.reasoning.dispatch_contract import build_dispatch_response
+from apps.providers.provider_config import get_camera_topic, get_observe_backend_name, get_observe_provider_name
 from embodiedclaw_msgs.action import ExecuteTask
 from embodiedclaw_msgs.msg import TaskEvent
+
+
+CAMERA_STATUS_FILE = Path(__file__).resolve().parents[2] / 'runtime_artifacts' / 'observe_camera_status.json'
 
 SUPPORTED_TASK_TYPES = {
     'move_forward',
@@ -212,6 +217,27 @@ def shutdown_event() -> None:
 def health() -> Dict[str, str]:
     return {'status': 'ok'}
 
+
+
+
+@app.get('/camera_status')
+def camera_status() -> Dict[str, Any]:
+    status = {
+        'observe_provider': get_observe_provider_name(),
+        'camera_topic': get_camera_topic(),
+        'observe_backend': get_observe_backend_name(),
+        'has_recent_frame': False,
+        'latest_frame_age_sec': None,
+    }
+
+    if CAMERA_STATUS_FILE.exists():
+        try:
+            persisted = json.loads(CAMERA_STATUS_FILE.read_text(encoding='utf-8'))
+            if isinstance(persisted, dict):
+                status.update(persisted)
+        except (OSError, json.JSONDecodeError):
+            pass
+    return status
 
 @app.post('/tasks')
 def create_task(request: TaskCreateRequest) -> Dict[str, Any]:
