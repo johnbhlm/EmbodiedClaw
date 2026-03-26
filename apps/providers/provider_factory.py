@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from providers.base import NavigateProvider, ObserveProvider
-from providers.basic_observe_backend import BasicObserveBackend
-from providers.fake_navigate_provider import FakeNavigateProvider
-from providers.fake_observe_provider import FakeObserveProvider
-from providers.provider_config import (
+from .base import NavigateProvider, ObserveProvider
+from .basic_observe_backend import BasicObserveBackend
+from .fake_navigate_provider import FakeNavigateProvider
+from .fake_observe_provider import FakeObserveProvider
+from .provider_config import (
     get_navigate_provider_name,
     get_observe_backend_name,
     get_observe_provider_name,
     get_observe_require_fresh_frame_sec,
 )
-from providers.ros_camera_observe_provider import RosCameraObserveProvider
+from .ros_camera_observe_provider import RosCameraObserveProvider
 
 
 def _build_observe_backend(name: str):

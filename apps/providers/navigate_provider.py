@@ -1,3 +1,3 @@
-from providers.base import NavigateProvider
+from .base import NavigateProvider
 
 __all__ = ['NavigateProvider']

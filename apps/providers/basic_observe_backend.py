@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from providers.observe_backend import ObserveBackend
+from .observe_backend import ObserveBackend
 
 
 class BasicObserveBackend(ObserveBackend):
