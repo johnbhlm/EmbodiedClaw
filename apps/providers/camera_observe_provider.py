@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from providers.base import ObserveProvider
+from .base import ObserveProvider
 
 
 class CameraObserveProvider(ObserveProvider):
