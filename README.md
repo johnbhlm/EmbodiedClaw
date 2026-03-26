@@ -298,6 +298,40 @@ This milestone introduces a **minimal two-tool contract** for OpenClaw integrati
 - `POST /openclaw/handle_message`
 - `GET /openclaw/poll_task/{task_id}`
 
+## Image Return for Feishu / OpenClaw
+
+Observation-style tasks now expose image artifact URIs through the OpenClaw polling contract in a backward-compatible way.
+
+- The existing text polling flow (`reply_text`, `terminal`, `progress`) is unchanged.
+- Completed observe-like tasks can return image URIs so OpenClaw can forward media to Feishu.
+- This is especially useful for:
+  - `你看到了什么`
+  - `桌子上都有什么`
+  - future window/light inspection tasks
+
+### Extended polling response fields
+
+`GET /openclaw/poll_task/{task_id}` now includes:
+
+- `image_uris`: list of image/file URIs (typically from `result.artifact_uris`)
+- `primary_image_uri`: first preferred URI for media send
+
+The same image fields are also surfaced on `GET /task_summary/{task_id}` for integration consistency.
+
+### Integration note (OpenClaw side)
+
+1. Call `POST /openclaw/handle_message`.
+2. If `needs_polling=true`, poll `GET /openclaw/poll_task/{task_id}`.
+3. Send `reply_text` to Feishu.
+4. If `primary_image_uri` exists, send image as a follow-up media message in Feishu.
+
+### Local validation steps for image return
+
+1. Run a real observe task (for example `你看到了什么`).
+2. Confirm task `result.artifact_uris` contains `file://...` entries.
+3. Confirm `GET /openclaw/poll_task/{task_id}` returns non-empty `image_uris` and `primary_image_uri`.
+4. Run `python -m apps.openclaw_bridge.demo_openclaw_loop` and confirm the loop prints image URI on terminal poll.
+
 > Scope note: this milestone is for Feishu/OpenClaw integration testing first. Real providers (real observe / VLN / VLA / SDK-backed adapters) come later.
 
 ### Intended flow

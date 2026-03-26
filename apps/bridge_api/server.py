@@ -171,6 +171,34 @@ def _goal_uuid_to_key(goal_uuid: Any) -> str:
     return str(goal_uuid)
 
 
+def _normalize_image_uris(value: Any) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
+
+
+def _derive_task_images(task: Dict[str, Any], latest_feedback: Dict[str, Any], latest_event: Dict[str, Any]) -> tuple[list[str], str | None]:
+    result = task.get('final_result')
+    if isinstance(result, dict):
+        artifact_uris = _normalize_image_uris(result.get('artifact_uris'))
+        if artifact_uris:
+            return artifact_uris, artifact_uris[0]
+
+        image_uris = _normalize_image_uris(result.get('image_uris'))
+        if image_uris:
+            return image_uris, image_uris[0]
+
+        primary = result.get('primary_image_uri')
+        if isinstance(primary, str) and primary.strip():
+            return [primary], primary
+
+    latest_image_uri = latest_feedback.get('image_uri') or latest_event.get('image_uri') or ''
+    if isinstance(latest_image_uri, str) and latest_image_uri.strip():
+        return [latest_image_uri], latest_image_uri
+
+    return [], None
+
+
 app = FastAPI(title='EmbodiedClaw Bridge API', version='0.0.1')
 _task_state: Dict[str, Dict[str, Any]] = {}
 _task_state_lock = threading.Lock()
@@ -329,17 +357,21 @@ def get_task_summary(task_id: str) -> Dict[str, Any]:
         feedback = task.get('feedback', [])
         latest_event = events[-1] if events else {}
         latest_feedback = feedback[-1] if feedback else {}
+        image_uris, primary_image_uri = _derive_task_images(task, latest_feedback, latest_event)
 
         result = task.get('final_result')
         final_status = task.get('latest_status')
         return {
             'task_id': task_id,
+            'task_type': task.get('task_type'),
             'final_status': final_status,
             'progress': task.get('progress', 0.0),
             'latest_stage': task.get('latest_stage'),
             'latest_status': task.get('latest_status'),
             'latest_message': latest_feedback.get('message') or latest_event.get('message') or '',
             'latest_image_uri': latest_feedback.get('image_uri') or latest_event.get('image_uri') or '',
+            'image_uris': image_uris,
+            'primary_image_uri': primary_image_uri,
             'result': result,
         }
 

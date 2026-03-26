@@ -22,6 +22,8 @@ class _ClientLike(Protocol):
 
     def get_task_summary(self, task_id: str) -> dict[str, Any]: ...
 
+    def openclaw_poll_task(self, task_id: str) -> dict[str, Any]: ...
+
 
 class EmbodiedClawToolRunner:
     def __init__(self, client: _ClientLike | None = None, base_url: str = 'http://127.0.0.1:8000') -> None:
@@ -75,6 +77,7 @@ class EmbodiedClawToolRunner:
 
 class OpenClawToolFacade:
     def __init__(self, client: _ClientLike | None = None, base_url: str = 'http://127.0.0.1:8000') -> None:
+        self.last_run_trace: list[OpenClawMessageResponse | OpenClawPollResponse] = []
         if client is not None:
             self.client = client
             return
@@ -88,6 +91,8 @@ class OpenClawToolFacade:
         return build_message_response(chat_result)
 
     def poll_task(self, task_id: str) -> OpenClawPollResponse:
+        if hasattr(self.client, 'openclaw_poll_task'):
+            return build_poll_response(self.client.openclaw_poll_task(task_id))
         summary = self.client.get_task_summary(task_id)
         return build_poll_response(summary)
 
@@ -99,6 +104,7 @@ class OpenClawToolFacade:
         max_polls: int = 20,
     ) -> list[str]:
         first = self.handle_message(command=command, context=context)
+        self.last_run_trace = [first]
         messages = [first.reply_text]
 
         if not first.needs_polling or not first.task_id:
@@ -107,6 +113,7 @@ class OpenClawToolFacade:
         last_message = first.reply_text
         for _ in range(max_polls):
             polled = self.poll_task(first.task_id)
+            self.last_run_trace.append(polled)
             if polled.reply_text != last_message:
                 messages.append(polled.reply_text)
                 last_message = polled.reply_text
