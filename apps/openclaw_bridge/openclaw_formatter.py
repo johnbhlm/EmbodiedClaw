@@ -3,6 +3,41 @@ from __future__ import annotations
 from apps.openclaw_bridge.openclaw_contract import OpenClawMessageResponse, OpenClawPollResponse
 
 
+def _normalize_image_uris(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str) and item.strip()]
+
+
+def _extract_image_uris(task_summary: dict) -> list[str]:
+    result = task_summary.get('result') if isinstance(task_summary, dict) else None
+    if not isinstance(result, dict):
+        result = {}
+
+    artifact_uris = _normalize_image_uris(result.get('artifact_uris'))
+    if artifact_uris:
+        return artifact_uris
+
+    explicit_candidates = [
+        _normalize_image_uris(result.get('image_uris')),
+        _normalize_image_uris(task_summary.get('image_uris')),
+    ]
+    for candidate in explicit_candidates:
+        if candidate:
+            return candidate
+
+    primary_candidates = [
+        result.get('primary_image_uri'),
+        task_summary.get('primary_image_uri'),
+        task_summary.get('latest_image_uri'),
+    ]
+    for candidate in primary_candidates:
+        if isinstance(candidate, str) and candidate.strip():
+            return [candidate]
+
+    return []
+
+
 def build_message_response(chat_result: dict) -> OpenClawMessageResponse:
     interpretation = chat_result.get('interpretation') or {}
     status = interpretation.get('status')
@@ -58,6 +93,8 @@ def build_poll_response(task_summary: dict) -> OpenClawPollResponse:
     status = (task_summary.get('final_status') or '').upper()
     task_id = task_summary.get('task_id')
     progress = task_summary.get('progress')
+    image_uris = _extract_image_uris(task_summary)
+    primary_image_uri = image_uris[0] if image_uris else None
 
     if status in {'RUNNING', 'ACCEPTED', 'CREATED'}:
         latest_stage = task_summary.get('latest_stage') or 'UNKNOWN'
@@ -69,19 +106,34 @@ def build_poll_response(task_summary: dict) -> OpenClawPollResponse:
             task_id=task_id,
             terminal=False,
             progress=progress,
+            image_uris=[],
+            primary_image_uri=None,
             raw=task_summary,
         )
 
     if status == 'SUCCEEDED':
         result = task_summary.get('result') or {}
         summary = result.get('summary') or str(result) or '任务执行完成'
+        task_type = (task_summary.get('task_type') or '').lower()
+        observe_like = (
+            bool(image_uris)
+            or task_type in {'observe_scene', 'list_objects_on_surface', 'inspect_windows', 'inspect_windows_and_lights'}
+        )
+        if observe_like and image_uris:
+            reply_text = '任务已完成，已获取当前画面。'
+        elif observe_like:
+            reply_text = f'任务已完成：{summary}'
+        else:
+            reply_text = f'任务已完成：{summary}'
         return OpenClawPollResponse(
             ok=True,
             mode='completed',
-            reply_text=f'任务已完成：{summary}',
+            reply_text=reply_text,
             task_id=task_id,
             terminal=True,
             progress=progress if progress is not None else 1.0,
+            image_uris=image_uris,
+            primary_image_uri=primary_image_uri,
             raw=task_summary,
         )
 
@@ -95,6 +147,8 @@ def build_poll_response(task_summary: dict) -> OpenClawPollResponse:
             task_id=task_id,
             terminal=True,
             progress=progress,
+            image_uris=image_uris,
+            primary_image_uri=primary_image_uri,
             raw=task_summary,
         )
 
@@ -105,5 +159,7 @@ def build_poll_response(task_summary: dict) -> OpenClawPollResponse:
         task_id=task_id,
         terminal=True,
         progress=progress,
+        image_uris=[],
+        primary_image_uri=None,
         raw=task_summary,
     )

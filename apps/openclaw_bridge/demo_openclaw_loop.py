@@ -27,6 +27,10 @@ def main() -> None:
             polled = facade.poll_task(message.task_id)
             print(polled.reply_text)
             if polled.terminal:
+                if polled.primary_image_uri:
+                    print(f'primary_image_uri: {polled.primary_image_uri}')
+                if polled.image_uris:
+                    print(f'image_uris: {polled.image_uris}')
                 break
             time.sleep(1.0)
 

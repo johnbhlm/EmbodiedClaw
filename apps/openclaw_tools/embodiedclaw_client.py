@@ -58,7 +58,7 @@ class EmbodiedClawClient:
         return response.json()
 
     def get_task_summary(self, task_id: str) -> dict[str, Any]:
-        """GET /task_summary/{task_id} for compact chat polling."""
+        """GET /task_summary/{task_id} for compact chat polling (includes image_uris fields when available)."""
         response = requests.get(f"{self.base_url}/task_summary/{task_id}", timeout=self.timeout)
         response.raise_for_status()
         return response.json()
@@ -71,7 +71,7 @@ class EmbodiedClawClient:
         return response.json()
 
     def openclaw_poll_task(self, task_id: str) -> dict[str, Any]:
-        """GET /openclaw/poll_task/{task_id} for stable assistant-facing polling."""
+        """GET /openclaw/poll_task/{task_id} for stable assistant-facing polling with optional image URIs."""
         response = requests.get(f"{self.base_url}/openclaw/poll_task/{task_id}", timeout=self.timeout)
         response.raise_for_status()
         return response.json()
